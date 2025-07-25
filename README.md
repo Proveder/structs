@@ -13,11 +13,27 @@ time I've added other utilities for structs.  It's basically a high level
 package based on primitives from the reflect package. Feel free to add new
 functions or improve the existing code.
 
-## Install
+## Installation
 
-```bash
-go get github.com/fatih/structs
-```
+> Requires Go 1.24+ and access to Proveder’s private GitHub repositories.
+
+1. Tell Go where private code lives:
+
+   ```bash
+   export GOPRIVATE=github.com/proveder
+   ```
+
+2. Tell Git to use SSH for those repos:
+
+   ```bash
+   git config --global url."git@github.com:proveder".insteadOf "https://github.com/proveder"
+   ```
+
+3. Add the module:
+
+   ```bash
+   go get github.com/proveder/structs@latest
+   ```
 
 ## Usage and Examples
 
