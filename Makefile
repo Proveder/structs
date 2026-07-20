@@ -1,6 +1,6 @@
 # Go files tracked by git, expanded lazily by the shell (gopls check needs explicit
 # paths - it does not accept ./...). Falls back to find outside a git checkout.
-GO_FILES = $$(git ls-files '*.go' 2>/dev/null || find . -name '*.go' -not -path './vendor/*')
+GO_FILES = $$(git ls-files '*.go' 2>/dev/null | xargs -I{} sh -c '[ -f "{}" ] && echo "{}"' || find . -name '*.go' -not -path './vendor/*')
 
 # This package is a struct-tag reflection library, so several of its test
 # fixtures are *deliberately* malformed structs - they are the input under test,
@@ -40,6 +40,16 @@ GOPLS_EXCLUDE = 'can be simplified to new\(x\)|inlinable wrapper around new\(exp
 lint: ## Static analysis: correctness (vet), simplifications (staticcheck), modernizations (gopls)
 	@# Every stage runs even if an earlier one reports, so a single invocation shows
 	@# the full picture; rc accumulates and the target fails at the end.
+	@# Preflight: gopls pins GOTOOLCHAIN=local, so the *installed* go must satisfy
+	@# go.work/go.mod on its own — GOTOOLCHAIN=auto silently rescues vet/staticcheck
+	@# by downloading a newer toolchain, but gopls then fails with a buried version
+	@# error. Surface it up front, with the remedy.
+	@if ! chk="$$(GOTOOLCHAIN=local go list -m 2>&1 >/dev/null)"; then \
+		echo "==> toolchain preflight failed:"; \
+		printf '%s\n' "$$chk" | sed 's/^/  /'; \
+		echo "  fix: update the installed Go (macOS: brew upgrade go), then re-run"; \
+		exit 1; \
+	fi
 	@rc=0; \
 	echo "==> go vet (correctness)"; \
 	vetraw="$$(go vet ./... 2>&1)"; \

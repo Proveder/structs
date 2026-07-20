@@ -251,8 +251,7 @@ func getFields(v reflect.Value, tagName string) []*Field {
 
 	var fields []*Field
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for field := range t.Fields() {
 
 		if tag := field.Tag.Get(tagName); tag == "-" {
 			continue
@@ -407,8 +406,7 @@ func (s *Struct) structFields() []reflect.StructField {
 
 	var f []reflect.StructField
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for field := range t.Fields() {
 		// we can't access the value of unexported fields
 		if field.PkgPath != "" {
 			continue
