@@ -7,14 +7,19 @@ import (
 
 // A test struct that defines all cases
 type Foo struct {
-	A    string
-	B    int    `structs:"y"`
-	C    bool   `json:"c"`
-	d    string // not exported
-	E    *Baz
+	A string
+	B int    `structs:"y"`
+	C bool   `json:"c"`
+	d string // not exported
+	E *Baz
+	// Deliberate fixture: an unexported field that still carries a tag. It is
+	// read back by TestField_Tag (`s.Field("x").Tag("xml")` must equal "x"), so
+	// neither the field nor the tag can be removed. vet/staticcheck/gopls all
+	// flag it; the lint target filters those exact findings.
+	//lint:ignore U1000 load-bearing test fixture, asserted in TestField_Tag
 	x    string `xml:"x"` // not exported, with tag
 	Y    []string
-	Z    map[string]interface{}
+	Z    map[string]any
 	*Bar // embedded
 }
 

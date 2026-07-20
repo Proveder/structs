@@ -1,3 +1,60 @@
+# Go files tracked by git, expanded lazily by the shell (gopls check needs explicit
+# paths - it does not accept ./...). Falls back to find outside a git checkout.
+GO_FILES = $$(git ls-files '*.go' 2>/dev/null || find . -name '*.go' -not -path './vendor/*')
+
+# This package is a struct-tag reflection library, so several of its test
+# fixtures are *deliberately* malformed structs - they are the input under test,
+# not defects. vet has no per-site suppression comment (staticcheck's
+# //lint:ignore is used where it works), so the one structtag finding is filtered
+# here instead of disabling the whole analyzer:
+#
+#   field_test.go  Foo.x  - unexported field carrying `xml:"x"`. TestField_Tag
+#                           asserts s.Field("x").Tag("xml") == "x", so removing
+#                           the field or the tag breaks the test.
+VET_EXCLUDE = 'struct field x has xml tag but is not exported'
+
+# gopls exclusions, each with a reason:
+#
+#  1. new(expr) modernizer (Go 1.26): needs a go >= 1.26 module and this one
+#     declares go 1.24.4, so it cannot fire. Kept only so the lint target reads
+#     identically across the proveder Go repos.
+#  2. reflect.TypeOf -> reflect.TypeFor: every site is an assertion of the form
+#     `reflect.TypeOf(m).Kind() != reflect.Map`, checking what Map()/Values()
+#     actually returned. TypeFor[...] hardcodes the expected type, which makes
+#     the assertion tautological and blind to a signature regression - the
+#     "modernization" would silently delete the test's purpose.
+#  3. structtag / JSON string option: same deliberate fixtures as VET_EXCLUDE
+#     above, plus the `json:",string"` fixtures behind TestTagWithStringOption
+#     and TestNonStringerTagWithStringOption.
+GOPLS_EXCLUDE = 'can be simplified to new\(x\)|inlinable wrapper around new\(expr\)|call can be simplified using TypeFor|struct field x has xml tag but is not exported|the JSON string option only applies to fields'
+
+.PHONY: lint
+lint: ## Static analysis: correctness (vet), simplifications (staticcheck), modernizations (gopls)
+	@# Every stage runs even if an earlier one reports, so a single invocation shows
+	@# the full picture; rc accumulates and the target fails at the end.
+	@rc=0; \
+	echo "==> go vet (correctness)"; \
+	vetout="$$(go vet ./... 2>&1 | grep -Ev $(VET_EXCLUDE) || true)"; \
+	if [ -n "$$vetout" ]; then echo "$$vetout"; rc=1; fi; \
+	echo "==> staticcheck (simplifications)"; \
+	if command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./... || rc=1; \
+	else \
+		echo "  skipped: go install honnef.co/go/tools/cmd/staticcheck@latest"; rc=1; \
+	fi; \
+	echo "==> gopls (modernizations, unused params)"; \
+	if command -v gopls >/dev/null 2>&1; then \
+		if ! raw="$$(gopls check -severity=hint $(GO_FILES) 2>&1)"; then \
+			echo "  gopls failed to run:"; echo "$$raw"; rc=1; \
+		fi; \
+		out="$$(printf '%s\n' "$$raw" | grep -Ev $(GOPLS_EXCLUDE) || true)"; \
+		if [ -n "$$out" ]; then echo "$$out"; rc=1; fi; \
+	else \
+		echo "  skipped: go install golang.org/x/tools/gopls@latest"; rc=1; \
+	fi; \
+	if [ $$rc -eq 0 ]; then echo "lint: clean"; fi; \
+	exit $$rc
+
 .PHONY: test
 test:
 	@echo "executing unit-tests"
@@ -16,4 +73,4 @@ audit-fix: ## Attempt to fix vulnerable dependencies automatically
 	@echo "re-running dependency audit"
 	go list -m all | nancy sleuth
 
-.PHONY: test audit audit-fix
+.PHONY: test audit audit-fix lint
