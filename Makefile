@@ -13,6 +13,14 @@ GO_FILES = $$(git ls-files '*.go' 2>/dev/null || find . -name '*.go' -not -path 
 #                           the field or the tag breaks the test.
 VET_EXCLUDE = 'struct field x has xml tag but is not exported'
 
+# Go <= 1.25 prefixes vet findings with package header lines ("# pkg" and
+# "# [pkg]"); Go >= 1.26 prints the bare finding. Those headers survive
+# VET_EXCLUDE and would fail the target on their own, so they are dropped
+# separately. The full unfiltered output is echoed when a real finding remains,
+# so the headers are still there when they carry information.
+# (the \# escape is required - a bare # would start a Make comment.)
+VET_HEADER = '^\#'
+
 # gopls exclusions, each with a reason:
 #
 #  1. new(expr) modernizer (Go 1.26): needs a go >= 1.26 module and this one
@@ -34,8 +42,9 @@ lint: ## Static analysis: correctness (vet), simplifications (staticcheck), mode
 	@# the full picture; rc accumulates and the target fails at the end.
 	@rc=0; \
 	echo "==> go vet (correctness)"; \
-	vetout="$$(go vet ./... 2>&1 | grep -Ev $(VET_EXCLUDE) || true)"; \
-	if [ -n "$$vetout" ]; then echo "$$vetout"; rc=1; fi; \
+	vetraw="$$(go vet ./... 2>&1)"; \
+	vetout="$$(printf '%s\n' "$$vetraw" | grep -Ev $(VET_EXCLUDE) | grep -Ev $(VET_HEADER) || true)"; \
+	if [ -n "$$vetout" ]; then printf '%s\n' "$$vetraw"; rc=1; fi; \
 	echo "==> staticcheck (simplifications)"; \
 	if command -v staticcheck >/dev/null 2>&1; then \
 		staticcheck ./... || rc=1; \
