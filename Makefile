@@ -71,6 +71,7 @@ lint: ## Static analysis: correctness (vet), simplifications (staticcheck), mode
 	else \
 		echo "  skipped: go install golang.org/x/tools/gopls@latest"; rc=1; \
 	fi; \
+	$(MAKE) --no-print-directory crap || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "lint: clean"; fi; \
 	exit $$rc
 
@@ -93,3 +94,29 @@ audit-fix: ## Attempt to fix vulnerable dependencies automatically
 	go list -m all | nancy sleuth
 
 .PHONY: test audit audit-fix lint
+
+# CRAP (Change Risk Anti-Patterns) = cyclomatic complexity² penalized by
+# missing test coverage — ranks the functions most dangerous to change.
+# The gate fails when any function scores ABOVE CRAP_THRESHOLD. Mocks
+# packages are filtered out of the report entirely: test scaffolding
+# carries zero coverage by design and would otherwise own its whole top.
+# The threshold was set just above the repo's worst score when the gate
+# was introduced — treat it as a RATCHET: lower it as the worst functions
+# gain tests or shed complexity; never raise it.
+CRAP_THRESHOLD ?= 20
+
+.PHONY: crap
+crap:
+	@echo "==> crap4go (CRAP: complexity vs coverage, worst first; threshold $(CRAP_THRESHOLD))"; \
+	out="$$(go run github.com/unclebob/crap4go/cmd/crap4go@latest)" || { printf '%s\n' "$$out"; exit 1; }; \
+	report="$$(printf '%s\n' "$$out" | sed -n '/^CRAP Report/,$$p' | awk 'NR <= 4 || $$2 != "mocks"')"; \
+	printf '%s\n' "$$report"; \
+	if [ -n "$$GITHUB_STEP_SUMMARY" ]; then \
+		{ echo '### CRAP report (threshold $(CRAP_THRESHOLD))'; echo '```'; printf '%s\n' "$$report"; echo '```'; } >> "$$GITHUB_STEP_SUMMARY"; \
+	fi; \
+	printf '%s\n' "$$report" | awk -v max=$(CRAP_THRESHOLD) ' \
+		/^-+$$/ { in_r = 1; next } \
+		in_r && NF >= 5 && ($$NF) + 0 > max { bad = 1; print "  over threshold: " $$0 } \
+		END { exit bad }' \
+	|| { echo "crap: FAILED (score above $(CRAP_THRESHOLD))"; exit 1; }; \
+	echo "crap: clean"
