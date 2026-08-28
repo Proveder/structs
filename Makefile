@@ -104,15 +104,22 @@ audit-fix: ## Attempt to fix vulnerable dependencies automatically
 # was introduced — treat it as a RATCHET: lower it as the worst functions
 # gain tests or shed complexity; never raise it.
 CRAP_THRESHOLD ?= 20
+# Rows shown in the report table (worst first). Display-only: the
+# threshold gate below still scans EVERY row.
+CRAP_MAX_ROWS ?= 25
 
 .PHONY: crap
 crap:
 	@echo "==> crap4go (CRAP: complexity vs coverage, worst first; threshold $(CRAP_THRESHOLD))"; \
 	out="$$(go run github.com/unclebob/crap4go/cmd/crap4go@latest)" || { printf '%s\n' "$$out"; exit 1; }; \
 	report="$$(printf '%s\n' "$$out" | sed -n '/^CRAP Report/,$$p' | awk 'NR <= 4 || $$2 != "mocks"')"; \
-	printf '%s\n' "$$report"; \
+	display="$$(printf '%s\n' "$$report" | awk -v rows=$(CRAP_MAX_ROWS) ' \
+		NR <= 4 { print; next } \
+		++n <= rows { print; next } \
+		END { if (n > rows) printf "... (%d more rows below the top %d)\n", n - rows, rows }')"; \
+	printf '%s\n' "$$display"; \
 	if [ -n "$$GITHUB_STEP_SUMMARY" ]; then \
-		{ echo '### CRAP report (threshold $(CRAP_THRESHOLD))'; echo '```'; printf '%s\n' "$$report"; echo '```'; } >> "$$GITHUB_STEP_SUMMARY"; \
+		{ echo '### CRAP report (threshold $(CRAP_THRESHOLD), top $(CRAP_MAX_ROWS))'; echo '```'; printf '%s\n' "$$display"; echo '```'; } >> "$$GITHUB_STEP_SUMMARY"; \
 	fi; \
 	printf '%s\n' "$$report" | awk -v max=$(CRAP_THRESHOLD) ' \
 		/^-+$$/ { in_r = 1; next } \
