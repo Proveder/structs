@@ -1,6 +1,10 @@
 name: Lint
 run-name: ${{ github.actor }} is linting 🔍
-on: [push]
+# Never runs on push or pull request: the Release workflow calls it on the
+# commit it is about to tag, and it can be run by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  workflow_call:
 jobs:
   Lint:
     runs-on: ubuntu-latest
